@@ -2,7 +2,6 @@ package processing
 
 import (
 	"image"
-	"io"
 	"math"
 )
 
@@ -33,13 +32,7 @@ func luminanceToChar(luminance uint8) string {
 	return string(CHARS[index])
 }
 
-func GetFrame(file io.Reader, width, height uint) (*Frame, error) {
-	img, _, err := image.Decode(file)
-
-	if err != nil {
-		return nil, err
-	}
-
+func GetFrame(img image.Image, width, height uint) (*Frame, error) {
 	bounds := img.Bounds()
 	imageWidth, imageHeight := bounds.Max.X, bounds.Max.Y
 	targetWidth, targetHeight := getOutputSize(width, height, uint(imageWidth), uint(imageHeight))
