@@ -9,11 +9,18 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/nsf/termbox-go"
 	ffmpeg_go "github.com/u2takey/ffmpeg-go"
 	"golang.org/x/term"
+)
+
+// FPS calculation
+var (
+	lastFrameTime time.Time
+	mu            sync.Mutex
 )
 
 func StreamFrames(videoPath string, processFrame func(image.Image)) error {
@@ -81,11 +88,24 @@ func loadAndDisplayFrame(img image.Image, terminalWidth, terminalHeight int) {
 }
 
 func displayFrame(frame *processing.Frame) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// FPS Calculation
+	now := time.Now()
+	if !lastFrameTime.IsZero() {
+		elapsed := now.Sub(lastFrameTime).Seconds()
+		fps := 1 / elapsed
+
+		fmt.Fprintf(os.Stdout, "\033[H\033[2KFPS: %.2f\n", fps)
+	}
+	lastFrameTime = now
+
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 
 	for y, row := range frame.Chars {
 		for x, char := range row {
-			termbox.SetCell(x, y, rune(char[0]), termbox.ColorDefault, termbox.ColorDefault)
+			termbox.SetCell(x, y+1, rune(char[0]), termbox.ColorDefault, termbox.ColorDefault)
 		}
 	}
 
