@@ -17,7 +17,6 @@ import (
 	"golang.org/x/term"
 )
 
-const FRAME_RATE = 30
 const FRAME_BUFFER_SIZE = 50
 
 // FPS calculation
@@ -26,7 +25,7 @@ var (
 	mu            sync.Mutex
 )
 
-func Play(videoPath string) {
+func Play(settings Settings) {
 	terminalWidth, terminalHeight, err := term.GetSize(0)
 	if err != nil {
 		fmt.Println("Error: Could not get terminal size")
@@ -48,7 +47,7 @@ func Play(videoPath string) {
 	wg.Add(1)
 
 	// Start processing frames
-	go streamFrames(videoPath, buffer, &wg, stop)
+	go streamFrames(settings, buffer, &wg, stop)
 
 	// Wait for buffer to be filled
 	valuesReady := 0
@@ -73,7 +72,7 @@ func Play(videoPath string) {
 	}
 
 	// Start consuming values
-	go consumeValues(buffer, FRAME_RATE, terminalWidth, terminalHeight, stop)
+	go consumeValues(buffer, settings.FrameRate, terminalWidth, terminalHeight, stop)
 
 	go func() {
 		wg.Wait()
@@ -98,15 +97,15 @@ func Play(videoPath string) {
 	<-stop
 }
 
-func streamFrames(videoPath string, buffer chan image.Image, wg *sync.WaitGroup, stop chan struct{}) {
+func streamFrames(settings Settings, buffer chan image.Image, wg *sync.WaitGroup, stop chan struct{}) {
 	defer wg.Done()
 
-	cmd := ffmpeg_go.Input(videoPath).
+	cmd := ffmpeg_go.Input(settings.VideoPath).
 		Output("pipe:", ffmpeg_go.KwArgs{
 			"format":    "image2pipe",
 			"vcodec":    "png",
 			"loglevel":  "quiet",
-			"framerate": FRAME_RATE,
+			"framerate": settings.FrameRate,
 		})
 
 	var videoBuffer bytes.Buffer
