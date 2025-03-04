@@ -30,7 +30,7 @@ func newPixel(r uint32, g uint32, b uint32) Pixel {
 
 func luminanceToChar(luminance uint8, fullfilled bool) string {
 	if fullfilled {
-		return string('\u2588')
+		return "@"
 	}
 
 	index := int((float64(luminance) / 255.0) * float64(len(CHARS)-1))
