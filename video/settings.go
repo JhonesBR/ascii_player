@@ -4,4 +4,5 @@ package video
 type Settings struct {
 	VideoPath string
 	FrameRate int
+	Colored   bool
 }

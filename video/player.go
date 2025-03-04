@@ -36,6 +36,9 @@ func Play(settings Settings) {
 	if err != nil {
 		log.Fatal("Error initializing termbox:", err)
 	}
+	if settings.Colored {
+		termbox.SetOutputMode(termbox.OutputRGB)
+	}
 	defer termbox.Close()
 
 	// Channel for stopping playback on Enter key press
@@ -72,7 +75,7 @@ func Play(settings Settings) {
 	}
 
 	// Start consuming values
-	go consumeValues(buffer, settings.FrameRate, terminalWidth, terminalHeight, stop)
+	go consumeValues(settings, buffer, terminalWidth, terminalHeight, stop)
 
 	go func() {
 		wg.Wait()
@@ -143,8 +146,8 @@ func streamFrames(settings Settings, buffer chan image.Image, wg *sync.WaitGroup
 	}
 }
 
-func consumeValues(ch chan image.Image, fps, terminalWidth, terminalHeight int, stop chan struct{}) {
-	ticker := time.NewTicker(time.Second / time.Duration(fps))
+func consumeValues(settings Settings, ch chan image.Image, terminalWidth, terminalHeight int, stop chan struct{}) {
+	ticker := time.NewTicker(time.Second / time.Duration(settings.FrameRate))
 	defer ticker.Stop()
 	for {
 		select {
@@ -188,9 +191,13 @@ func displayFrame(frame *processing.Frame) error {
 
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 
+	var color termbox.Attribute
+	var pixel processing.Pixel
 	for y, row := range frame.Chars {
 		for x, char := range row {
-			termbox.SetCell(x, y+1, rune(char[0]), termbox.ColorDefault, termbox.ColorDefault)
+			pixel = frame.Pixels[y][x]
+			color = termbox.RGBToAttribute(pixel.R, pixel.G, pixel.B)
+			termbox.SetCell(x, y+1, rune(char[0]), color, termbox.ColorDefault)
 		}
 	}
 
