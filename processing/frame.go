@@ -3,6 +3,7 @@ package processing
 import (
 	"image"
 	"math"
+	"sync"
 )
 
 const CHARS = "                                    `.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@"
@@ -19,12 +20,12 @@ type Pixel struct {
 	luminance uint8
 }
 
-func newPixel(r uint32, g uint32, b uint32) *Pixel {
+func newPixel(r uint32, g uint32, b uint32) Pixel {
 	rVal := uint8(r >> 8)
 	gVal := uint8(g >> 8)
 	bVal := uint8(b >> 8)
-	luminance := uint8(0.299*float32(r) + 0.587*float32(g) + 0.114*float32(b))
-	return &Pixel{R: rVal, G: gVal, B: bVal, luminance: luminance}
+	luminance := uint8(0.299*float32(rVal) + 0.587*float32(gVal) + 0.114*float32(bVal))
+	return Pixel{R: rVal, G: gVal, B: bVal, luminance: luminance}
 }
 
 func luminanceToChar(luminance uint8) string {
@@ -39,58 +40,47 @@ func GetFrame(img image.Image, width, height uint) (*Frame, error) {
 	chunkWidth := uint(math.Floor(float64(imageWidth) / float64(targetWidth)))
 	chunkHeight := uint(math.Floor(float64(imageHeight) / float64(targetHeight)))
 
-	var pixels [][]Pixel
-	var chars [][]string
+	pixels := make([][]Pixel, targetHeight)
+	chars := make([][]string, targetHeight)
 
-	for yChunk := 0; yChunk < imageHeight; yChunk += int(chunkHeight) {
-		var row []Pixel
-		var charRow []string
+	var wg sync.WaitGroup
+	for yChunk := 0; yChunk < int(targetHeight); yChunk++ {
+		wg.Add(1)
+		go func(yChunk int) {
+			defer wg.Done()
+			row := make([]Pixel, targetWidth)
+			charRow := make([]string, targetWidth)
 
-		for xChunk := 0; xChunk < imageWidth; xChunk += int(chunkWidth) {
-			// Calculate pixel for the chunk
-			var chunkPixels [][]Pixel
-			for y := yChunk; y < yChunk+int(chunkHeight); y++ {
-				if y >= imageHeight {
-					break
-				}
-				for x := xChunk; x < xChunk+int(chunkWidth); x++ {
-					if x >= imageWidth {
-						break
+			for xChunk := 0; xChunk < int(targetWidth); xChunk++ {
+				var rSum, gSum, bSum uint32
+				var pixelCount uint32
+
+				for y := yChunk * int(chunkHeight); y < (yChunk+1)*int(chunkHeight) && y < imageHeight; y++ {
+					for x := xChunk * int(chunkWidth); x < (xChunk+1)*int(chunkWidth) && x < imageWidth; x++ {
+						r, g, b, _ := img.At(x, y).RGBA()
+						rSum += r
+						gSum += g
+						bSum += b
+						pixelCount++
 					}
-					r, g, b, _ := img.At(x, y).RGBA()
-					pixel := newPixel(r, g, b)
-					chunkPixels = append(chunkPixels, []Pixel{*pixel})
 				}
+
+				meanR := rSum / pixelCount
+				meanG := gSum / pixelCount
+				meanB := bSum / pixelCount
+
+				chunkPixel := newPixel(meanR, meanG, meanB)
+				row[xChunk] = chunkPixel
+				charRow[xChunk] = luminanceToChar(chunkPixel.luminance)
 			}
 
-			chunkPixel := getMeanPixel(chunkPixels)
-			row = append(row, *chunkPixel)
-			charRow = append(charRow, luminanceToChar(chunkPixel.luminance))
-		}
-
-		pixels = append(pixels, row)
-		chars = append(chars, charRow)
+			pixels[yChunk] = row
+			chars[yChunk] = charRow
+		}(yChunk)
 	}
 
+	wg.Wait()
 	return &Frame{Pixels: pixels, Chars: chars}, nil
-}
-
-func getMeanPixel(pixels [][]Pixel) *Pixel {
-	var rSum, gSum, bSum uint32
-	for _, row := range pixels {
-		for _, pixel := range row {
-			rSum += uint32(pixel.R)
-			gSum += uint32(pixel.G)
-			bSum += uint32(pixel.B)
-		}
-	}
-
-	pixelCount := len(pixels) * len(pixels[0])
-	meanR := rSum / uint32(pixelCount)
-	meanG := gSum / uint32(pixelCount)
-	meanB := bSum / uint32(pixelCount)
-
-	return newPixel(meanR, meanG, meanB)
 }
 
 func getOutputSize(desiredWidth, desiredHeight, currentWidth, currentHeight uint) (uint, uint) {
