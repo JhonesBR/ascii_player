@@ -126,10 +126,12 @@ func streamFrames(videoPath string, buffer chan image.Image, wg *sync.WaitGroup,
 		default:
 			img, err := png.Decode(reader)
 			if err == io.EOF {
-				break
+				close(stop) // Signal stop when video finishes
+				return
 			}
 			if err != nil {
-				break
+				close(stop) // Signal stop on error
+				return
 			}
 
 			// Wait for buffer to have space
