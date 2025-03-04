@@ -17,41 +17,14 @@ import (
 	"golang.org/x/term"
 )
 
+const FRAME_RATE = 30
+const FRAME_BUFFER_SIZE = 50
+
 // FPS calculation
 var (
 	lastFrameTime time.Time
 	mu            sync.Mutex
 )
-
-func StreamFrames(videoPath string, processFrame func(image.Image)) error {
-	cmd := ffmpeg_go.Input(videoPath).
-		Output("pipe:", ffmpeg_go.KwArgs{"format": "image2pipe", "vcodec": "png"})
-
-	var buffer bytes.Buffer
-
-	err := cmd.WithOutput(&buffer).Run()
-	if err != nil {
-		return fmt.Errorf("error running ffmpeg: %w", err)
-	}
-
-	reader := bytes.NewReader(buffer.Bytes())
-	frameIndex := 0
-	for {
-		img, err := png.Decode(reader)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Println("Error decoding frame:", err)
-			break
-		}
-
-		processFrame(img) // Process each frame
-		frameIndex++
-	}
-
-	return nil
-}
 
 func Play(videoPath string) {
 	terminalWidth, terminalHeight, err := term.GetSize(0)
@@ -66,12 +39,123 @@ func Play(videoPath string) {
 	}
 	defer termbox.Close()
 
-	err = StreamFrames(videoPath, func(img image.Image) {
-		loadAndDisplayFrame(img, terminalWidth, terminalHeight)
-	})
+	// Channel for stopping playback on Enter key press
+	stop := make(chan struct{})
 
+	// Processing buffer
+	buffer := make(chan image.Image, FRAME_BUFFER_SIZE)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// Start processing frames
+	go streamFrames(videoPath, buffer, &wg, stop)
+
+	// Wait for buffer to be filled
+	valuesReady := 0
+	for valuesReady < FRAME_BUFFER_SIZE {
+		select {
+		case msg, ok := <-buffer:
+			if !ok {
+				// Wait
+				if valuesReady >= FRAME_BUFFER_SIZE {
+					return
+				} else {
+					continue
+				}
+			}
+
+			// Put the value back into the channel
+			valuesReady++
+			buffer <- msg
+		default:
+			time.Sleep(1 * time.Millisecond)
+		}
+	}
+
+	// Start consuming values
+	go consumeValues(buffer, FRAME_RATE, terminalWidth, terminalHeight, stop)
+
+	go func() {
+		wg.Wait()
+		close(buffer)
+	}()
+
+	// Listen for Enter key press to stop playback
+	go func() {
+		for {
+			switch ev := termbox.PollEvent(); ev.Type {
+			case termbox.EventKey:
+				if ev.Key == termbox.KeyEnter {
+					close(stop)
+					return
+				}
+			case termbox.EventError:
+				log.Fatal(ev.Err)
+			}
+		}
+	}()
+
+	<-stop
+}
+
+func streamFrames(videoPath string, buffer chan image.Image, wg *sync.WaitGroup, stop chan struct{}) {
+	defer wg.Done()
+
+	cmd := ffmpeg_go.Input(videoPath).
+		Output("pipe:", ffmpeg_go.KwArgs{
+			"format":    "image2pipe",
+			"vcodec":    "png",
+			"loglevel":  "quiet",
+			"framerate": FRAME_RATE,
+		})
+
+	var videoBuffer bytes.Buffer
+
+	err := cmd.WithOutput(&videoBuffer).Run()
 	if err != nil {
-		log.Fatal("Error processing frames:", err)
+		log.Fatal("Error running ffmpeg:", err)
+		close(buffer)
+		return
+	}
+
+	reader := bytes.NewReader(videoBuffer.Bytes())
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+			img, err := png.Decode(reader)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+
+			// Wait for buffer to have space
+			select {
+			case buffer <- img:
+			case <-stop:
+				return
+			}
+		}
+	}
+}
+
+func consumeValues(ch chan image.Image, fps, terminalWidth, terminalHeight int, stop chan struct{}) {
+	ticker := time.NewTicker(time.Second / time.Duration(fps))
+	defer ticker.Stop()
+	for {
+		select {
+		case img, ok := <-ch:
+			if !ok {
+				return
+			}
+			loadAndDisplayFrame(img, terminalWidth, terminalHeight)
+			<-ticker.C
+		case <-stop:
+			return
+		}
 	}
 }
 
@@ -97,7 +181,7 @@ func displayFrame(frame *processing.Frame) error {
 		elapsed := now.Sub(lastFrameTime).Seconds()
 		fps := 1 / elapsed
 
-		fmt.Fprintf(os.Stdout, "\033[H\033[2KFPS: %.2f\n", fps)
+		fmt.Fprintf(os.Stdout, "\033[H\033[2K[Press ENTER to stop the video] FPS: %.2f\n", fps)
 	}
 	lastFrameTime = now
 
@@ -113,9 +197,6 @@ func displayFrame(frame *processing.Frame) error {
 	if err != nil {
 		return err
 	}
-
-	// ~30 FPS
-	time.Sleep(33 * time.Millisecond)
 
 	return nil
 }
