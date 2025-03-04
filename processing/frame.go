@@ -28,12 +28,16 @@ func newPixel(r uint32, g uint32, b uint32) Pixel {
 	return Pixel{R: rVal, G: gVal, B: bVal, luminance: luminance}
 }
 
-func luminanceToChar(luminance uint8) string {
+func luminanceToChar(luminance uint8, fullfilled bool) string {
+	if fullfilled {
+		return string('\u2588')
+	}
+
 	index := int((float64(luminance) / 255.0) * float64(len(CHARS)-1))
 	return string(CHARS[index])
 }
 
-func GetFrame(img image.Image, width, height uint) (*Frame, error) {
+func GetFrame(img image.Image, width, height uint, fullfilled bool) (*Frame, error) {
 	bounds := img.Bounds()
 	imageWidth, imageHeight := bounds.Max.X, bounds.Max.Y
 	targetWidth, targetHeight := getOutputSize(width, height, uint(imageWidth), uint(imageHeight))
@@ -71,7 +75,7 @@ func GetFrame(img image.Image, width, height uint) (*Frame, error) {
 
 				chunkPixel := newPixel(meanR, meanG, meanB)
 				row[xChunk] = chunkPixel
-				charRow[xChunk] = luminanceToChar(chunkPixel.luminance)
+				charRow[xChunk] = luminanceToChar(chunkPixel.luminance, fullfilled)
 			}
 
 			pixels[yChunk] = row

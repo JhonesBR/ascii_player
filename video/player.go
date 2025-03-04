@@ -155,7 +155,7 @@ func consumeValues(settings Settings, ch chan image.Image, terminalWidth, termin
 			if !ok {
 				return
 			}
-			loadAndDisplayFrame(img, terminalWidth, terminalHeight)
+			loadAndDisplayFrame(settings, img, terminalWidth, terminalHeight)
 			<-ticker.C
 		case <-stop:
 			return
@@ -163,8 +163,8 @@ func consumeValues(settings Settings, ch chan image.Image, terminalWidth, termin
 	}
 }
 
-func loadAndDisplayFrame(img image.Image, terminalWidth, terminalHeight int) {
-	frame, err := processing.GetFrame(img, uint(terminalWidth), uint(terminalHeight))
+func loadAndDisplayFrame(settings Settings, img image.Image, terminalWidth, terminalHeight int) {
+	frame, err := processing.GetFrame(img, uint(terminalWidth), uint(terminalHeight), settings.FullFilled)
 	if err != nil {
 		log.Fatal("Error getting frame:", err)
 	}
