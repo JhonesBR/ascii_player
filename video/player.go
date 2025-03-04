@@ -164,7 +164,7 @@ func consumeValues(settings Settings, ch chan image.Image, terminalWidth, termin
 }
 
 func loadAndDisplayFrame(settings Settings, img image.Image, terminalWidth, terminalHeight int) {
-	frame, err := processing.GetFrame(img, uint(terminalWidth), uint(terminalHeight), settings.FullFilled)
+	frame, err := processing.GetFrame(img, uint(terminalWidth), uint(terminalHeight), settings.FullFilled && settings.Colored)
 	if err != nil {
 		log.Fatal("Error getting frame:", err)
 	}
