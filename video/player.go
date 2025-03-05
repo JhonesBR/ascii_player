@@ -41,8 +41,9 @@ func Play(settings Settings) {
 	}
 	defer termbox.Close()
 
-	// Channel for stopping playback on Enter key press
+	// Channel for stopping playback on Enter key press or video end
 	stop := make(chan struct{})
+	done := make(chan struct{})
 
 	// Processing buffer
 	buffer := make(chan image.Image, FRAME_BUFFER_SIZE)
@@ -97,7 +98,11 @@ func Play(settings Settings) {
 		}
 	}()
 
-	<-stop
+	// Wait for either Enter key or video completion
+	select {
+	case <-stop:
+	case <-done:
+	}
 }
 
 func streamFrames(settings Settings, buffer chan image.Image, wg *sync.WaitGroup, stop chan struct{}) {
@@ -128,11 +133,9 @@ func streamFrames(settings Settings, buffer chan image.Image, wg *sync.WaitGroup
 		default:
 			img, err := png.Decode(reader)
 			if err == io.EOF {
-				close(stop) // Signal stop when video finishes
 				return
 			}
 			if err != nil {
-				close(stop) // Signal stop on error
 				return
 			}
 
@@ -153,6 +156,7 @@ func consumeValues(settings Settings, ch chan image.Image, terminalWidth, termin
 		select {
 		case img, ok := <-ch:
 			if !ok {
+				close(stop)
 				return
 			}
 			loadAndDisplayFrame(settings, img, terminalWidth, terminalHeight)
